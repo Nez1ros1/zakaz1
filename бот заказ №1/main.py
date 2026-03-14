@@ -16,7 +16,6 @@ from aiogram.enums import ParseMode
 # --- КОНФИГУРАЦИЯ ---
 API_TOKEN = '8739690833:AAFRCEsPd7FcphwcP56KpHs7dIEfHMrMPoQ'
 SUPPORT_URL = 'https://t.me/FunpayDealsManager'
-CHANNEL_URL = 'https://t.me/NewsFunpayBot'
 PHOTO_FILENAME = "funpay.jpg" 
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -42,15 +41,10 @@ class DealCreation(StatesGroup):
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Создать сделку", callback_data="create_deal")],
-        [InlineKeyboardButton(text="📋 Мои сделки", callback_data="my_deals"), 
-         InlineKeyboardButton(text="🔐 Верификация", callback_data="verify")],
-        [InlineKeyboardButton(text="💳 Реквизиты", callback_data="reqs"),
-         InlineKeyboardButton(text="🌐 Язык", callback_data="lang")],
-        [InlineKeyboardButton(text="🔗 Рефералы", callback_data="refs"),
-         InlineKeyboardButton(text="ℹ️ Подробнее", callback_data="about")],
-        [InlineKeyboardButton(text="📖 News", url=CHANNEL_URL),
-         InlineKeyboardButton(text="📩 Обращения", callback_data="tickets")],
-        [InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_URL)]
+        [InlineKeyboardButton(text="📋 Мои сделки", callback_data="my_deals")],
+        [InlineKeyboardButton(text="🔐 Верификация", callback_data="verify")],
+        [InlineKeyboardButton(text="ℹ️ Подробнее", callback_data="about")],
+        [InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_URL)] # Теперь в списке ряда
     ])
 
 def get_currency_keyboard():
