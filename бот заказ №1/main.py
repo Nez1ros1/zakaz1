@@ -70,8 +70,7 @@ def get_main_menu_text() -> str:
         "📝 Прозрачная статистика\n"
         "🎯 Поддержка 24/7\n"
         "📊 История сделок"
-        "</blockquote>\n\n"
-        f"Менеджер: {SUPPORT_HANDLE}"
+        "</blockquote>"
     )
 
 
@@ -317,13 +316,13 @@ async def about(callback: CallbackQuery):
 async def stats(callback: CallbackQuery):
     await callback.answer()
     text = (
-        "<b>Статистика Funpay Gifts</b>\n\n"
+        "Статистика Funpay Gifts\n\n"
         "🤝 Всего сделок: 100713\n"
         "✅ Успешных сделок: 97635\n"
         "💰 Общий объем: $1039079\n"
         "⭐️ Средний рейтинг: 4.9/5.0\n"
         "🟢 Онлайн сейчас: 19042\n\n"
-        "📈 <b>Наши преимущества:</b>\n"
+        "📈 Наши преимущества:\n"
         "• 🔒 Гарант-сервис на все сделки\n"
         "• ⚡️ Мгновенная доставка товаров\n"
         "• 🛡️ Защита от мошенников\n"
