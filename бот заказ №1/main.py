@@ -17,7 +17,7 @@ from aiogram.enums import ParseMode
 API_TOKEN = '8739690833:AAFRCEsPd7FcphwcP56KpHs7dIEfHMrMPoQ'
 SUPPORT_URL = 'https://t.me/FunpayDealsManager'
 CHANNEL_URL = 'https://t.me/NewsFunpayBot'
-PHOTO_FILENAME = "funpay.jpg" 
+
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
@@ -27,9 +27,7 @@ dp.include_router(router)
 DEALS = {}
 PAYMENT_ACCESS = set()
 
-# Путь к фото (универсальный)
-base_path = os.path.dirname(os.path.abspath(__file__))
-photo_path = os.path.join(base_path, PHOTO_FILENAME)
+
 
 class DealCreation(StatesGroup):
     choosing_currency = State()
