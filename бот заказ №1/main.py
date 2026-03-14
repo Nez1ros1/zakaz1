@@ -11,6 +11,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramConflictError
 from aiogram.types import (
     CallbackQuery,
     FSInputFile,
@@ -52,10 +53,25 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="📝 Создать сделку", callback_data="create_deal")],
             [InlineKeyboardButton(text="📋 Мои сделки", callback_data="my_deals")],
+            [InlineKeyboardButton(text="📊 Статистика", callback_data="stats")],
             [InlineKeyboardButton(text="🔐 Верификация", callback_data="verify")],
             [InlineKeyboardButton(text="ℹ️ Подробнее", callback_data="about")],
             [InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_URL)],
         ]
+    )
+
+
+def get_main_menu_text() -> str:
+    return (
+        "<b>Добро пожаловать в Funpay Gifts</b>\n\n"
+        "<blockquote>"
+        "🛡️ Защита от мошенников\n"
+        "💰 Автоматическое удержание средств\n"
+        "📝 Прозрачная статистика\n"
+        "🎯 Поддержка 24/7\n"
+        "📊 История сделок"
+        "</blockquote>\n\n"
+        f"Менеджер: {SUPPORT_HANDLE}"
     )
 
 
@@ -94,10 +110,14 @@ async def _send_text_only(
 ):
     if isinstance(event, CallbackQuery) and event.message:
         try:
-            await event.message.delete()
+            await event.message.edit_text(text, reply_markup=reply_markup)
+            return
         except Exception:
-            pass
-        await event.message.answer(text, reply_markup=reply_markup)
+            try:
+                await event.message.delete()
+            except Exception:
+                pass
+            await event.message.answer(text, reply_markup=reply_markup)
         return
 
     target = event.message if isinstance(event, CallbackQuery) else event
@@ -173,12 +193,7 @@ async def start_cmd(message: Message, command: CommandObject, state: FSMContext)
             await universal_send(message, text, get_deal_keyboard(deal_id), use_photo=False)
             return
 
-    text = (
-        "<b>Добро пожаловать в Market</b>\n\n"
-        "🛡 Безопасные сделки\n"
-        "💰 Автоматическое удержание\n\n"
-        f"Менеджер: {SUPPORT_HANDLE}"
-    )
+    text = get_main_menu_text()
     await universal_send(message, text, get_main_keyboard(), use_photo=True)
 
 
@@ -205,6 +220,10 @@ async def process_currency(callback: CallbackQuery, state: FSMContext):
 
 @router.message(DealCreation.entering_amount)
 async def process_amount(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Введите сумму текстом, например: 1500")
+        return
+
     await state.update_data(amount=message.text)
     await state.set_state(DealCreation.entering_item)
     await universal_send(message, "📝 <b>Шаг 3:</b> Введите название товара:", get_back_keyboard(), use_photo=False)
@@ -212,6 +231,10 @@ async def process_amount(message: Message, state: FSMContext):
 
 @router.message(DealCreation.entering_item)
 async def process_item(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Введите название товара текстом")
+        return
+
     await state.update_data(item=message.text)
     await state.set_state(DealCreation.entering_requisites)
     await universal_send(message, "💳 <b>Шаг 4:</b> Укажите реквизиты для выплаты:", get_back_keyboard(), use_photo=False)
@@ -221,7 +244,16 @@ async def process_item(message: Message, state: FSMContext):
 async def process_requisites(message: Message, state: FSMContext):
     global cached_bot_username
 
+    if not message.text:
+        await message.answer("❌ Укажите реквизиты текстом")
+        return
+
     data = await state.get_data()
+    if not all(k in data for k in ("currency", "amount", "item")):
+        await state.clear()
+        await message.answer("⚠️ Сессия создания сделки сброшена. Нажмите «Создать сделку» ещё раз.")
+        return
+
     deal_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
     if not cached_bot_username:
@@ -281,6 +313,27 @@ async def about(callback: CallbackQuery):
     await universal_send(callback, text, markup, use_photo=False)
 
 
+@router.callback_query(F.data == "stats")
+async def stats(callback: CallbackQuery):
+    await callback.answer()
+    text = (
+        "<b>Статистика Funpay Gifts</b>\n\n"
+        "🤝 Всего сделок: 100713\n"
+        "✅ Успешных сделок: 97635\n"
+        "💰 Общий объем: $1039079\n"
+        "⭐️ Средний рейтинг: 4.9/5.0\n"
+        "🟢 Онлайн сейчас: 19042\n\n"
+        "📈 <b>Наши преимущества:</b>\n"
+        "• 🔒 Гарант-сервис на все сделки\n"
+        "• ⚡️ Мгновенная доставка товаров\n"
+        "• 🛡️ Защита от мошенников\n"
+        "• 💎 Проверенные продавцы\n"
+        "• 📞 24/7 Поддержка\n"
+        "• ⭐️ 99.8% положительных отзывов"
+    )
+    await universal_send(callback, text, get_back_keyboard(), use_photo=False)
+
+
 @router.callback_query(F.data.startswith("pay_"))
 async def pay_deal(callback: CallbackQuery):
     await callback.answer()
@@ -301,13 +354,23 @@ async def pay_deal(callback: CallbackQuery):
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
-    await universal_send(callback, "<b>Главное меню Market</b>\n\nВыберите действие:", get_main_keyboard(), use_photo=True)
+    await universal_send(callback, get_main_menu_text(), get_main_keyboard(), use_photo=True)
 
 
 async def main():
     logging.basicConfig(level=logging.INFO)
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot, drop_pending_updates=True)
+    while True:
+        try:
+            await dp.start_polling(bot, drop_pending_updates=True)
+            break
+        except TelegramConflictError:
+            logging.error(
+                "TelegramConflictError: запущен ещё один экземпляр бота с этим токеном. "
+                "Остановите другой процесс/бота в BotFather и перезапустите текущий."
+            )
+            await asyncio.sleep(5)
+            await bot.delete_webhook(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
