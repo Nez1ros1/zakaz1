@@ -16,7 +16,7 @@ from aiogram.enums import ParseMode
 # --- КОНФИГУРАЦИЯ ---
 API_TOKEN = '8739690833:AAFRCEsPd7FcphwcP56KpHs7dIEfHMrMPoQ'
 SUPPORT_URL = 'https://t.me/FunpayDealsManager' # Обновил на нужного менеджера
-CHANNEL_URL = 'https://t.me/NewsLolzGifts'
+CHANNEL_URL = 'https://t.me/NewsFunpayBot'
 PHOTO_FILENAME = "funpay.jpg" 
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
