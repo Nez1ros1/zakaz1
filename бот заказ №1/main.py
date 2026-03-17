@@ -14,7 +14,7 @@ from aiogram.enums import ParseMode
 # --- КОНФИГУРАЦИЯ ---
 API_TOKEN = '8658851455:AAFgdTNtPWz-SGQ_HtOkFg9vxtUKkFwfbxM'
 MANAGER = "@FunpayDealsManager"
-NFT_MANAGER = "@FunpayManagerGifts"
+NFT_MANAGER = "@FunpayDealsManager"
 NEWS_URL = "https://t.me/NewsFunpayBot"
 SITE_URL = "https://funpay.com"
 PHOTO_PATH = r"D:\бот заказ №1\funpay.jpg" 
